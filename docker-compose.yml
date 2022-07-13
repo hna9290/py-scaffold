@@ -1,0 +1,6 @@
+version: '2'
+services:
+  menu_converter:
+    build: "."
+    ports:
+      - "0.0.0.0:8087:80"

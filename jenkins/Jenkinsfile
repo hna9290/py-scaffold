@@ -1,0 +1,77 @@
+pipeline {
+        options {
+            disableConcurrentBuilds()
+            buildDiscarder(logRotator(numToKeepStr: '7', artifactNumToKeepStr: '7'))
+        }
+        environment {
+            BBCREDENTIALS = credentials('BBTEST')
+            DOCKER_REPO = "storepick/menu-converter"
+            ENV = "dev"
+            AWS_ENV_CRED_ID = "JENKINS_NONPROD_PEOPLE"
+            REGION = "eu-west-1"
+        }
+
+        agent {
+            dockerfile {
+                filename 'jenkins/Dockerfile'
+                label 'docker-slave-cluster'
+                args '-u root -v /var/run/docker.sock:/var/run/docker.sock '
+            }
+        }
+
+        stages {
+            stage('Prepare, Unit test, Coverage, Mypy') {
+                steps {
+                    script {
+                        sh "make init"
+                        sh "make coverage"
+                        sh "make mypy"
+                    }
+                }
+            }
+            stage('Local Integration Test') {
+                steps {
+                    script {
+                        sh "make compose-build"
+                        sh "make up"
+                        env.DOCKER_IP=sh(script: "docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}' `docker-compose ps -q`", returnStdout: true).trim()
+                         sh "make e2e"
+                        sh "make down"
+                    }
+                }
+            }
+            stage('Docker Build and push') {
+                steps {
+                    script {
+                         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_ENV_CRED_ID]]) {
+                            def account_id = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                            sh "set +x && \$(aws ecr get-login --region eu-west-1 --no-include-email)"
+                            def customImage = docker.build("${account_id}.dkr.ecr.${env.REGION}.amazonaws.com/${env.DOCKER_REPO}:${env.BUILD_ID}")
+                            customImage.push()
+                            customImage.push("${env.ENV}")
+                         }
+                    }
+                }
+            }
+            stage('Terraform & Serverless') {
+                steps {
+                    script {
+                        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: AWS_ENV_CRED_ID]]) {
+                            sh 'make terrafile args="-u ${BBCREDENTIALS_USR} -p ${BBCREDENTIALS_PSW}"'
+                            sh "make terraform-account env=${env.ENV}"
+                            sh "make terraform-up env=${env.ENV}"
+                            sh "make serverless"
+                        }
+                    }
+                }
+            }
+        }
+        post {
+            always {
+                script {
+                    publishHTML(target: [reportDir:'reports/tests/coverage/htmlcov/', reportFiles: 'index.html', reportName: 'Coverage'])
+                    cleanWs()
+                }
+            }
+        }
+    }

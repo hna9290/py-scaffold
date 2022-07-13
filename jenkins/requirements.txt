@@ -1,0 +1,14 @@
+Flask==1.1.2
+flask-swagger-ui==3.25.0
+fire
+
+# Test
+pylint==2.5.3
+mypy==0.782
+lxml==4.5.2
+pytest==5.4.3
+coverage==5.2.1
+behave==1.2.6
+requests==2.24.0
+docker-compose
+awscli==1.18.106

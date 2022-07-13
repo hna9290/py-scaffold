@@ -1,0 +1,223 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Morrisons Json Generator",
+    "description": "This generatres JSON menu from uploaded CSV",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "/api"
+    }
+  ],
+  "tags": [
+    {
+      "name": "CSV to JSON Converter",
+      "description": "Everything CSV to JSON Converter"
+    }
+  ],
+  "paths": {
+    "/ping": {
+      "get": {
+        "tags": [
+          "CSV to JSON Converter"
+        ],
+        "summary": "For container healthcheck",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/upload": {
+      "post": {
+        "tags": [
+          "CSV to JSON Converter"
+        ],
+        "summary": "Uploads a CSV file",
+        "description": "Uploads CSV file and returns ID",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "A JSON array of user names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/201"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request. Invalid input file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/convert/{FileId}": {
+      "get": {
+        "tags": [
+          "CSV to JSON Converter"
+        ],
+        "summary": "Convert uploaded CSV to JSON",
+        "description": "Convert uploaded CSV to JSON using the `FileId` provided in the URL",
+        "parameters": [
+          {
+            "name": "FileId",
+            "in": "path",
+            "description": "ID of the document to convert and get",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A JSON array of user names",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "x-content-type": "application/json",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The specified resource was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/delete/{FileId}": {
+      "delete": {
+        "tags": [
+          "CSV to JSON Converter"
+        ],
+        "summary": "Delete Uploaded CSV",
+        "description": "Delete Uploaded CSV using the `FileId` provided in the URL",
+        "parameters": [
+          {
+            "name": "FileId",
+            "in": "path",
+            "description": "ID of the document to convert and get",
+            "required": true,
+            "style": "simple",
+            "explode": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "example": {
+                    "message": "Deleted Successfully"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "201": {
+        "type": "object",
+        "properties": {
+          "FileId": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "message": "File uploaded successfully",
+          "FileId": "123431-3563453"
+        }
+      },
+      "404": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "example": {
+          "message": "File not found. Please check"
+        }
+      },
+      "Error": {
+        "required": [
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

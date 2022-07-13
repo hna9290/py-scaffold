@@ -1,0 +1,198 @@
+service: storepick-osp-picks-to-kafka
+
+plugins:
+  - serverless-python-requirements
+  - serverless-step-functions
+  - serverless-pseudo-parameters
+  - serverless-plugin-aws-alerts
+provider:
+  name: aws
+  runtime: python3.8
+  stage: default
+  region: eu-west-1
+  timeout: ${self:custom.timeout.${self:custom.stage},120}
+  environment:
+    PYTHONPATH: 'app/lambdas:app/lib:/var/runtime:/opt/python:/usr/lib/'
+    LD_LIBRARY_PATH: '/usr/lib'
+    ENV: ${self:custom.stage}
+  deploymentBucket:
+    name: m${self:custom.awsAccount.${self:custom.stage}, 'spt'}.storepick.digital.storepick-services-sls
+    blockPublicAccess: true # Prevents public access via ACLs or bucket policies. Default is false
+    tags: # Tags that will be added to each of the deployment resources
+      Domain: Digital
+      Service: ${self:service}
+  deploymentPrefix: serverless
+
+package:
+    include:
+      - app/**/*.py
+      - app/**/*.so*
+    exclude:
+        - "*/**"
+        - '!app/lambdas/**/*.py'
+        - '!app/lib/**/*.py'
+        - Jenkinsfile
+        - requirements.txt
+        - "test/**"
+        - "*"
+
+custom:
+  stage: ${opt:stage, self:provider.stage}
+
+  pythonRequirements:
+    slim: false 
+    slimPatternsAppendDefaults: false
+    slimPatterns:
+#      - '**/*.egg-info*'
+      - "**/*.py[c|o]"
+      - "**/__pycache__*"
+#      - "**/*.dist-info*"
+    strip: false
+    useDownloadCache: true
+    useStaticCache: true
+    dockerizePip: non-linux
+
+  awsAccount:
+    dev: "spt"
+    sit: "np"
+    uat: "np"
+    prd: "p"
+  timeout:
+    prd: 300
+  batchSize:
+    prd: 10000
+  batchWindow:
+    prd: 300
+  roleMiddleLetter:
+    prd: ${opt:roleMiddleLetter, "p"}
+  middleLetter: ${self:custom.roleMiddleLetter.${self:custom.stage},'n'}
+  tableName: ${self:custom.stage}.xxwmm.storepick.osp-eh-v2
+
+# ALERTS for all the ERROR and THROTTLE in any of the function
+  emailId:
+    default: ${opt:emailId,'your-email-id@morrisonsplc.co.uk'}
+    dev: ${opt:emailId,'storepick-dev-email-id@morrisonsplc.co.uk'}
+    sit: ${opt:emailId,'storepick-sit-email-id@morrisonsplc.co.uk'}
+    uat: ${opt:emailId,'storepick-uat-email-id@morrisonsplc.co.uk'}
+    prd: 'storepick_cloudwatch_alerts-ug@morrisonsplc.co.uk'
+
+  alerts:
+    stages:
+      - ${self:custom.stage}
+    topics:
+      alarm:
+        topic: arn:aws:sns:#{AWS::Region}:#{AWS::AccountId}:sns-euw1-${self:custom.stage}-digital-storepick-pick2cafka-failure
+        notifications:
+          - protocol: email
+            endpoint: ${self:custom.emailId.${self:custom.stage},'noreply-emailID@morrisonsplc.co.uk'}
+    definitions:  # these defaults are merged with your definitions
+      cwlogErrorsAny:
+        metric: picks2KafkaCritical
+        threshold: 1
+        statistic: Sum
+        period: 60
+        evaluationPeriods: 1
+        datapointsToAlarm: 1
+        comparisonOperator: GreaterThanOrEqualToThreshold
+        pattern: '?OSP_DYNAMODB_TO_S3_ERROR ?OSP_KAFKA_PRODUCER_ERROR ?CRITICAL ?OSP_DYNAMODB_TO_S3_ERROR_CRITICAL ?OSP_KAFKA_PRODUCER_ERROR_CRITICAL ?OSP_KAFKA_PRODUCER_ERROR_CRITICAL'
+    alarms:
+      - functionErrors
+      - functionThrottles
+      - cwlogErrorsAny
+
+functions:
+  StorepickStreamToS3:
+    handler: app/lambdas/storepick_stream_to_s3.lambda_handler
+    name: lmb-euw1-${opt:stage,self:provider.stage,'dev'}-storepick-stream-to-s3-001
+    role: arn:aws:iam::#{AWS::AccountId}:role/rol-glob-${self:custom.middleLetter}-digital-restricted-lambda-001
+
+
+  StorepickTopicSegregator:
+    handler: app/lambdas/storepick_topic_segregator.lambda_handler
+    name: lmb-euw1-${opt:stage,self:provider.stage,'dev'}-storepick-picks-topic-segregator-001
+    role: arn:aws:iam::#{AWS::AccountId}:role/rol-glob-${self:custom.middleLetter}-digital-restricted-lambda-001
+    vpc: ${file(vpc_settings.yml):${self:custom.awsAccount.${self:custom.stage},"spt"}}
+
+
+resources:
+  Conditions:
+    CreateResources:
+      Fn::Not:
+        - Fn::Or:
+          - Fn::Equals:
+            - ${self:custom.stage}
+            - dev
+          - Fn::Equals:
+            - ${self:custom.stage}
+            - sit
+          - Fn::Equals:
+            - ${self:custom.stage}
+            - prd
+  Resources:
+    PickTaskDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableName}
+        AttributeDefinitions:
+          - AttributeName: pickTaskId
+            AttributeType: S
+          - AttributeName: orderId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pickTaskId
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TimeToLiveSpecification:
+          AttributeName: timeToLive
+          Enabled: true
+        GlobalSecondaryIndexes:
+        - IndexName: "orderGSI"
+          KeySchema:
+            - AttributeName: "orderId"
+              KeyType: "HASH"
+          Projection: 
+            ProjectionType: "ALL"
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+
+    ToS3DynamoDBTableStream:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        # The maximum number of DB items to send to Lambda
+        BatchSize: ${self:custom.batchSize.${self:custom.stage},100}
+        MaximumBatchingWindowInSeconds: ${self:custom.batchWindow.${self:custom.stage},15} 
+        Enabled: True
+        EventSourceArn: !GetAtt PickTaskDBTable.StreamArn
+        FunctionName:
+          Fn::GetAtt:
+            - "StorepickStreamToS3LambdaFunction"
+            - "Arn"
+        # Always start at the tail of the Stream
+        StartingPosition: LATEST
+        
+    SegDynamoDBTableStream:
+      Type: AWS::Lambda::EventSourceMapping
+      Properties:
+        # The maximum number of DB items to send to Lambda
+        BatchSize: ${self:custom.batchSize.${self:custom.stage},100}
+        MaximumBatchingWindowInSeconds: ${self:custom.batchWindow.${self:custom.stage},15} 
+        Enabled: True
+        EventSourceArn: !GetAtt PickTaskDBTable.StreamArn
+        FunctionName:
+          Fn::GetAtt:
+            - "StorepickTopicSegregatorLambdaFunction"
+            - "Arn"
+        # Always start at the tail of the Stream
+        StartingPosition: LATEST
+
+    SNSAlertTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: sns-euw1-${self:custom.stage}-digital-storepick-pick2cafka-failure
+
+    MySubscription:
+      Type: AWS::SNS::Subscription
+      Properties:
+        Endpoint: ${self:custom.emailId.${self:custom.stage},'noreply-emailID@morrisonsplc.co.uk'}
+        Protocol: email
+        TopicArn: !Ref SNSAlertTopic

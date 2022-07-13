@@ -1,0 +1,3 @@
+../modules/mor-terraform-aws-modules:
+  source: "https://bitbucket.org/morrisonsplc/platform-terraform-aws-modules.git"
+  version: "people12"

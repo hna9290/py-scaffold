@@ -1,0 +1,34 @@
+<testsuite name="converter.Menu converter integration tests" tests="3" errors="0" failures="0" skipped="0" time="0.057169" timestamp="2020-07-28T13:32:06.829728" hostname="firebreath"><testcase classname="converter.Menu converter integration tests" name="Upload file test" status="passed" time="0.02526"><system-out>
+<![CDATA[
+@scenario.begin
+  Scenario: Upload file test
+    Given I have a csv file ... passed in 0.000s
+    When I upload the file ... passed in 0.025s
+    Then The uploaded is successful ... passed in 0.000s
+
+@scenario.end
+--------------------------------------------------------------------------------
+]]>
+</system-out></testcase><testcase classname="converter.Menu converter integration tests" name="Get converted file test" status="passed" time="0.015488"><system-out>
+<![CDATA[
+@scenario.begin
+  Scenario: Get converted file test
+    Given I have a uploaded a csv file ... passed in 0.011s
+    When I get the converted file ... passed in 0.004s
+    Then The file is successfully converted ... passed in 0.001s
+
+@scenario.end
+--------------------------------------------------------------------------------
+]]>
+</system-out></testcase><testcase classname="converter.Menu converter integration tests" name="Delete file test" status="passed" time="0.016422"><system-out>
+<![CDATA[
+@scenario.begin
+  Scenario: Delete file test
+    Given I have a uploaded a csv file ... passed in 0.009s
+    When I delete the file ... passed in 0.003s
+    Then The file is deleted successfully ... passed in 0.004s
+
+@scenario.end
+--------------------------------------------------------------------------------
+]]>
+</system-out></testcase></testsuite>
